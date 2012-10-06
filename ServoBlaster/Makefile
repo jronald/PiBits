@@ -1,4 +1,4 @@
-KERNEL_TREE := /home/richard/github/linux
+KERNEL_TREE := /home/jr/raspberrypi/linux
 
 all:	servoblaster.ko
 

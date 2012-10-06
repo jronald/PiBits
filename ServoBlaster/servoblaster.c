@@ -120,12 +120,13 @@ static uint8_t servo2gpio[] = {
 		24,	// P1-18
 		25,	// P1-22
 };
-#define NUM_SERVOS	(sizeof(servo2gpio)/sizeof(servo2gpio[0]))
+
+#define MAX_SERVOS	(sizeof(servo2gpio)/sizeof(servo2gpio[0]))
 
 // Structure of our control data, stored in a 4K page, and accessed by dma controller
 struct ctldata_s {
-	struct bcm2708_dma_cb cb[NUM_SERVOS * 4];	// gpio-hi, delay, gpio-lo, delay, for each servo output
-	uint32_t gpiodata[NUM_SERVOS];				// set-pin, clear-pin values, per servo output
+	struct bcm2708_dma_cb cb[MAX_SERVOS * 4];	// gpio-hi, delay, gpio-lo, delay, for each servo output
+	uint32_t gpiodata[MAX_SERVOS];				// set-pin, clear-pin values, per servo output
 	uint32_t pwmdata;							// the word we write to the pwm fifo
 };
 
@@ -141,6 +142,7 @@ static struct cdev my_cdev;
 static int my_major;
 static int cycle_ticks = 2000;
 static int tick_scale = 6;
+static int num_servos = MAX_SERVOS;
 
 // Wait until we're not processing the given servo (actually wait until
 // we are not processing the low period of the previous servo, or the
@@ -155,7 +157,7 @@ static int wait_for_servo(int servo)
 			if (cb < servo*4-2 || cb > servo*4+2)
 				break;
 		} else {
-			if (cb > 2 && cb < NUM_SERVOS*4-2)
+			if (cb > 2 && cb < num_servos*4-2)
 				break;
 		}
 		local_irq_enable();
@@ -171,6 +173,11 @@ static int wait_for_servo(int servo)
 int init_module(void)
 {
 	int res, i, s;
+
+	if (num_servos < 1 || num_servos > 8) {
+		printk(KERN_WARNING "ServoBlaster: invalid num_servos argument specified. Valid values are 1-8.\n");
+		return -EINVAL;
+	}
 	
 	res = alloc_chrdev_region(&devno, 0, 1, "servoblaster");
 	if (res < 0) {
@@ -189,7 +196,8 @@ int init_module(void)
 	}
 
 	ctldatabase = __get_free_pages(GFP_KERNEL, 0);
-	printk(KERN_INFO "ServoBlaster: Control page is at 0x%lx, cycle_ticks %d, tick_scale %d\n", ctldatabase, cycle_ticks, tick_scale);
+	printk(KERN_INFO "ServoBlaster: Control page is at 0x%lx, cycle_ticks %d, tick_scale %d, num_servos %d\n", 
+			ctldatabase, cycle_ticks, tick_scale, num_servos);
 	if (ctldatabase == 0) {
 		printk(KERN_WARNING "ServoBlaster: alloc_pages failed\n");
 		cdev_del(&my_cdev);
@@ -205,7 +213,7 @@ int init_module(void)
 	memset(ctl, 0, sizeof(*ctl));
 
 	// Set all servo control pins to be outputs
-	for (i = 0; i < NUM_SERVOS; i++) {
+	for (i = 0; i < num_servos; i++) {
 		int gpio = servo2gpio[i];
 		int fnreg = gpio/10 + GPFSEL0;
 		int fnshft = (gpio %10) * 3;
@@ -219,7 +227,7 @@ int init_module(void)
 #endif
 
 	// Build the DMA CB chain
-	for (s = 0; s < NUM_SERVOS; s++) {
+	for (s = 0; s < num_servos; s++) {
 		int i = s*4;
 		// Set gpio high
 		ctl->gpiodata[s] = 1 << servo2gpio[s];
@@ -257,7 +265,7 @@ int init_module(void)
 		ctl->cb[i].next = (uint32_t)(ctl->cb + i + 1) & 0x7fffffff;
 	}
 	// Point last cb back to first one so it loops continuously
-	ctl->cb[NUM_SERVOS*4-1].next = (uint32_t)(ctl->cb) & 0x7fffffff;
+	ctl->cb[num_servos*4-1].next = (uint32_t)(ctl->cb) & 0x7fffffff;
 
 	// Initialise PWM
 	pwm_reg[PWM_CTL] = 0;
@@ -292,7 +300,7 @@ void cleanup_module(void)
 
 	// Take care to stop servos with outputs low, so we don't get
 	// spurious movement on module unload
-	for (servo = 0; servo < NUM_SERVOS; servo++) {
+	for (servo = 0; servo < num_servos; servo++) {
 		// Wait until we're not driving this servo
 		if (wait_for_servo(servo))
 			break;
@@ -344,7 +352,7 @@ static ssize_t dev_write(struct file *filp,const char *buf,size_t count,loff_t *
 		printk(KERN_WARNING "ServoBlaster: Failed to parse command (n=%d)\n", n);
 		return -EINVAL;
 	}
-	if (servo < 0 || servo >= NUM_SERVOS) {
+	if (servo < 0 || servo >= num_servos) {
 		printk(KERN_WARNING "ServoBlaster: Bad servo number %d\n", servo);
 		return -EINVAL;
 	}
@@ -385,4 +393,7 @@ MODULE_PARM_DESC(cycle_ticks, "number of ticks per cycle, max pulse is cycle_tic
 
 module_param(tick_scale, int, 0);
 MODULE_PARM_DESC(tick_scale, "scale the tick length, 6 should be 10us");
+
+module_param(num_servos, int, 0);
+MODULE_PARM_DESC(num_servos, "Number of servos (1-8) starting from servo 0 (default 8)");
 
