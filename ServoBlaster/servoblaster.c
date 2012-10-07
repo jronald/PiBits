@@ -260,7 +260,8 @@ int init_module(void)
 		ctl->cb[i].info   = BCM2708_DMA_NO_WIDE_BURSTS | BCM2708_DMA_WAIT_RESP | BCM2708_DMA_D_DREQ | BCM2708_DMA_PER_MAP(5);
 		ctl->cb[i].src    = (uint32_t)(&ctl->pwmdata) & 0x7fffffff;
 		ctl->cb[i].dst    = ((PWM_BASE + PWM_FIFO*4) & 0x00ffffff) | 0x7e000000;
-		ctl->cb[i].length = sizeof(uint32_t) * (cycle_ticks / 8 - 1);
+		ctl->cb[i].length = sizeof(uint32_t) * (cycle_ticks / num_servos - 1);	
+		//ctl->cb[i].length = sizeof(uint32_t) * (cycle_ticks / 8 - 1);
 		ctl->cb[i].stride = 0;
 		ctl->cb[i].next = (uint32_t)(ctl->cb + i + 1) & 0x7fffffff;
 	}
