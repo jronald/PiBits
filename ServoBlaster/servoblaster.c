@@ -357,7 +357,7 @@ static ssize_t dev_write(struct file *filp,const char *buf,size_t count,loff_t *
 		printk(KERN_WARNING "ServoBlaster: Bad servo number %d\n", servo);
 		return -EINVAL;
 	}
-	if (cnt < 0 || cnt > cycle_ticks / 8 - 1) {
+	if (cnt < 0 || cnt > cycle_ticks / num_servos - 1) {
 		printk(KERN_WARNING "ServoBlaster: Bad value %d\n", cnt);
 		return -EINVAL;
 	}
@@ -368,7 +368,7 @@ static ssize_t dev_write(struct file *filp,const char *buf,size_t count,loff_t *
 	} else {
 		ctl->cb[servo*4+0].dst = ((GPIO_BASE + GPSET0*4) & 0x00ffffff) | 0x7e000000;
 		ctl->cb[servo*4+1].length = cnt * sizeof(uint32_t);
-		ctl->cb[servo*4+3].length = (cycle_ticks / 8 - cnt) * sizeof(uint32_t);
+		ctl->cb[servo*4+3].length = (cycle_ticks / num_servos - cnt) * sizeof(uint32_t);
 	}
 	local_irq_enable();
 
